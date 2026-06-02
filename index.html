@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>켄싱턴 예약 모니터</title>
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --card: #fff;
+      --border: #e0e0e0;
+      --text: #1a1a1a;
+      --muted: #757575;
+      --primary: #1a73e8;
+      --success: #188038;
+      --danger: #c5221f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); padding: 32px 24px; max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .span2 { grid-column: 1 / -1; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    select, input[type="date"], input[type="number"], input[type="text"] {
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      font-size: 14px; width: 100%; outline: none; background: #fff;
+    }
+    select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px #1a73e820; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+    button { padding: 9px 22px; border-radius: 6px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #1558d6; }
+    .btn-stop { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-stop:hover { background: #fce8e6; }
+    .btn-sm { padding: 7px 14px; font-size: 13px; }
+
+    /* status bar */
+    .status-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .dot.running { background: var(--success); animation: blink 1.4s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* log */
+    #log { font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 13px; max-height: 360px; overflow-y: auto; }
+    .log-line { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .log-line:last-child { border-bottom: none; }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg { flex: 1; line-height: 1.5; }
+    .log-msg.available { color: var(--success); font-weight: 600; }
+    .log-msg.error, .log-msg.expired { color: var(--danger); }
+    .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+
+    /* session details */
+    details { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; }
+    summary { padding: 14px 20px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); list-style: none; user-select: none; }
+    summary::after { content: " ▾"; }
+    details[open] summary::after { content: " ▴"; }
+    .details-body { padding: 0 20px 18px; }
+    #sessionMsg { font-size: 13px; color: var(--success); display: none; }
+  </style>
+</head>
+<body>
+  <h1>켄싱턴 리조트 예약 모니터</h1>
+
+  <div class="card">
+    <div class="grid">
+      <div class="field span2">
+        <label>지점</label>
+        <select id="bran_cd"></select>
+      </div>
+      <div class="field">
+        <label>체크인</label>
+        <input type="date" id="checkin">
+      </div>
+      <div class="field">
+        <label>체크아웃</label>
+        <input type="date" id="checkout">
+      </div>
+      <div class="field">
+        <label>성인</label>
+        <input type="number" id="adult_cnt" value="2" min="1" max="10">
+      </div>
+      <div class="field">
+        <label>아동</label>
+        <input type="number" id="child_cnt" value="0" min="0" max="10">
+      </div>
+      <div class="field">
+        <label>체크 간격 (분)</label>
+        <input type="number" id="interval" value="5" min="1" max="60">
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="startBtn" onclick="startMonitor()">모니터링 시작</button>
+      <button class="btn-stop" id="stopBtn" style="display:none" onclick="stopMonitor()">중지</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="status-bar">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">대기 중</span>
+    </div>
+    <div id="log"><p class="empty">모니터링을 시작하면 여기에 결과가 표시됩니다.</p></div>
+  </div>
+
+  <details>
+    <summary>세션 설정</summary>
+    <div class="details-body">
+      <div class="grid" style="margin-top: 4px;">
+        <div class="field">
+          <label>회원번호</label>
+          <input type="text" id="memb_no" placeholder="015-24980-05">
+        </div>
+        <div class="field">
+          <label>khrf 쿠키 (2시간마다 갱신)</label>
+          <input type="text" id="khrf" placeholder="DevTools > Application > Cookies에서 복사">
+        </div>
+      </div>
+      <div class="actions" style="margin-top: 12px;">
+        <button class="btn-primary btn-sm" onclick="saveSession()">저장</button>
+        <span id="sessionMsg">저장됨 ✓</span>
+      </div>
+    </div>
+  </details>
+
+  <script>
+    let evtSource = null;
+
+    // 지점 목록 로드
+    fetch("/branches")
+      .then((r) => r.json())
+      .then((branches) => {
+        const sel = document.getElementById("bran_cd");
+        const addGroup = (label, items) => {
+          const grp = document.createElement("optgroup");
+          grp.label = label;
+          items.sort((a, b) => a.sortSeq - b.sortSeq).forEach((b) => {
+            const opt = document.createElement("option");
+            opt.value = b.branCd;
+            opt.textContent = b.branNm;
+            grp.appendChild(opt);
+          });
+          sel.appendChild(grp);
+        };
+        addGroup("켄싱턴 직영", branches.filter((b) => b.resortDiv === "0"));
+        addGroup("연계 리조트", branches.filter((b) => b.resortDiv === "1"));
+      });
+
+    // 기본 날짜: 오늘 / 내일
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    document.getElementById("checkin").value = fmt(today);
+    document.getElementById("checkout").value = fmt(tomorrow);
+
+    function startMonitor() {
+      const params = new URLSearchParams({
+        bran_cd:   document.getElementById("bran_cd").value,
+        checkin:   document.getElementById("checkin").value,
+        checkout:  document.getElementById("checkout").value,
+        adult_cnt: document.getElementById("adult_cnt").value,
+        child_cnt: document.getElementById("child_cnt").value,
+        interval:  document.getElementById("interval").value,
+      });
+
+      document.getElementById("log").innerHTML = "";
+      document.getElementById("startBtn").style.display = "none";
+      document.getElementById("stopBtn").style.display = "";
+      document.getElementById("dot").className = "dot running";
+      document.getElementById("statusText").textContent = "모니터링 중...";
+
+      evtSource = new EventSource(`/api/monitor?${params}`);
+      evtSource.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        appendLog(d);
+        if (d.status === "session_expired") stopMonitor();
+      };
+      evtSource.onerror = () => {
+        appendLog({ time: now(), status: "error", message: "연결 오류 — 서버 상태를 확인하세요" });
+        stopMonitor();
+      };
+    }
+
+    function stopMonitor() {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      document.getElementById("startBtn").style.display = "";
+      document.getElementById("stopBtn").style.display = "none";
+      document.getElementById("dot").className = "dot";
+      document.getElementById("statusText").textContent = "중지됨";
+    }
+
+    function appendLog(d) {
+      const log = document.getElementById("log");
+      const line = document.createElement("div");
+      line.className = "log-line";
+
+      const time = document.createElement("span");
+      time.className = "log-time";
+      time.textContent = d.time || now();
+
+      const msg = document.createElement("span");
+      msg.className = "log-msg";
+
+      if (d.status === "available") {
+        msg.classList.add("available");
+        msg.textContent = `#${d.count} ✅ 객실 ${d.rooms.length}개 발견! → ${d.rooms.join(" / ")}`;
+      } else if (d.status === "none") {
+        msg.textContent = `#${d.count} 빈 방 없음`;
+      } else if (d.status === "session_expired") {
+        msg.classList.add("expired");
+        msg.textContent = `#${d.count} ⚠ 세션 만료 — 아래 세션 설정에서 khrf 쿠키를 갱신하세요`;
+      } else if (d.status === "error") {
+        msg.classList.add("error");
+        msg.textContent = `#${d.count ?? "?"} 오류: ${d.message}`;
+      } else {
+        msg.textContent = `#${d.count} ${d.hint ?? d.status}`;
+      }
+
+      line.appendChild(time);
+      line.appendChild(msg);
+      log.insertBefore(line, log.firstChild);
+    }
+
+    async function saveSession() {
+      const body = {};
+      const khrf = document.getElementById("khrf").value.trim();
+      const memb_no = document.getElementById("memb_no").value.trim();
+      if (khrf) body.khrf = khrf;
+      if (memb_no) body.memb_no = memb_no;
+      await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const msg = document.getElementById("sessionMsg");
+      msg.style.display = "";
+      setTimeout(() => { msg.style.display = "none"; }, 2000);
+    }
+
+    const now = () => new Date().toTimeString().slice(0, 8);
+  </script>
+</body>
+</html>

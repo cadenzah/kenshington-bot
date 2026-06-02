@@ -1,0 +1,116 @@
+[
+    {
+        "branCd": "RKT01",
+        "branNm": "켄싱턴리조트 설악비치",
+        "resortDiv": "0",
+        "sortSeq": 1
+    },
+    {
+        "branCd": "RKT02",
+        "branNm": "켄싱턴리조트 경주",
+        "resortDiv": "0",
+        "sortSeq": 2
+    },
+    {
+        "branCd": "RKT03",
+        "branNm": "켄싱턴리조트 충주",
+        "resortDiv": "0",
+        "sortSeq": 3
+    },
+    {
+        "branCd": "RKT04",
+        "branNm": "켄싱턴리조트 제주한림",
+        "resortDiv": "0",
+        "sortSeq": 4
+    },
+    {
+        "branCd": "RKT05",
+        "branNm": "켄싱턴리조트 설악밸리2",
+        "resortDiv": "0",
+        "sortSeq": 5
+    },
+    {
+        "branCd": "RKT07",
+        "branNm": "켄싱턴리조트 서귀포",
+        "resortDiv": "0",
+        "sortSeq": 7
+    },
+    {
+        "branCd": "RKT08",
+        "branNm": "켄싱턴리조트 가평",
+        "resortDiv": "0",
+        "sortSeq": 8
+    },
+    {
+        "branCd": "RHK12",
+        "branNm": "켄싱턴리조트 지리산남원",
+        "resortDiv": "0",
+        "sortSeq": 9
+    },
+    {
+        "branCd": "RKT09",
+        "branNm": "글로리콘도 해운대",
+        "resortDiv": "0",
+        "sortSeq": 10
+    },
+    {
+        "branCd": "RKT10",
+        "branNm": "글로리콘도 도고",
+        "resortDiv": "0",
+        "sortSeq": 11
+    },
+    {
+        "branCd": "RJR01",
+        "branNm": "켄싱턴리조트 지리산하동",
+        "resortDiv": "0",
+        "sortSeq": 12
+    },
+    {
+        "branCd": "RHK01",
+        "branNm": "켄싱턴리조트 제주중문",
+        "resortDiv": "0",
+        "sortSeq": 14
+    },
+    {
+        "branCd": "RGH01",
+        "branNm": "연계_금호리조트(통영)",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RGH02",
+        "branNm": "연계_금호리조트(화순스파)",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RGH05",
+        "branNm": "연계_베어스타운",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RGH09",
+        "branNm": "연계_웰리힐리(횡성)",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RGH26",
+        "branNm": "연계_금호(글로리) 화순스파",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RHG11",
+        "branNm": "연계_금호(풍림/글로리)통영",
+        "resortDiv": "1",
+        "sortSeq": 99
+    },
+    {
+        "branCd": "RYP27",
+        "branNm": "연계_용평호텔앤리조트",
+        "resortDiv": "1",
+        "sortSeq": 99
+    }
+]
