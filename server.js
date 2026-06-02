@@ -75,16 +75,17 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
 
   if (NO_ROOM.some((p) => text.includes(p))) return { status: "none" };
 
-  const selectors = [".room_item", ".room_wrap li", ".list_room li", "[class*='room_list'] li"];
-  for (const sel of selectors) {
-    const els = $(sel);
-    if (els.length > 0) {
-      const rooms = els.map((_, el) => $(el).text().trim().replace(/\s+/g, " ").slice(0, 100)).get();
-      return { status: "available", rooms };
-    }
+  const els = $(".item_list li.item.room");
+  if (els.length > 0) {
+    const rooms = els.map((_, el) => {
+      const name = $(el).find(".title span").first().text().trim();
+      const price = $(el).find(".price .num").text().trim();
+      return price ? `${name} (₩${price}~)` : name;
+    }).get();
+    return { status: "available", rooms };
   }
 
-  return { status: "unknown", hint: "객실 셀렉터 미매칭 — debug_response.html 확인" };
+  return { status: "none" };
 }
 
 // ============================================================
