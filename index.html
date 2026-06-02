@@ -43,14 +43,25 @@
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
     /* log */
-    #log { font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 13px; max-height: 360px; overflow-y: auto; }
-    .log-line { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-    .log-line:last-child { border-bottom: none; }
-    .log-time { color: var(--muted); flex-shrink: 0; }
-    .log-msg { flex: 1; line-height: 1.5; }
-    .log-msg.available { color: var(--success); font-weight: 600; }
-    .log-msg.error, .log-msg.expired { color: var(--danger); }
-    .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+    #log { font-size: 14px; max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .log-entry { padding: 10px 14px; border-radius: 8px; border: 1px solid transparent; }
+    .log-entry.none    { background: #fafafa; border-color: var(--border); }
+    .log-entry.available { background: #e6f4ea; border-color: #a8d5b5; }
+    .log-entry.error,
+    .log-entry.expired { background: #fce8e6; border-color: #f5c6c3; }
+    .log-meta { display: flex; align-items: center; gap: 10px; }
+    .log-time  { font-family: "SF Mono", "Consolas", monospace; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .log-count { font-size: 12px; color: #bbb; flex-shrink: 0; }
+    .log-badge { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 20px; flex-shrink: 0; }
+    .badge-none      { background: #e8e8e8; color: var(--muted); }
+    .badge-available { background: var(--success); color: #fff; }
+    .badge-error,
+    .badge-expired   { background: var(--danger); color: #fff; }
+    .log-detail { font-size: 13px; color: var(--danger); }
+    .log-rooms { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; padding-left: 2px; }
+    .log-room  { font-size: 13px; color: #1a5c2a; display: flex; gap: 6px; }
+    .log-room::before { content: "·"; color: #6aaa7e; }
+    .empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
 
     /* session details */
     details { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; }
@@ -128,7 +139,34 @@
   <script>
     let evtSource = null;
 
-    // 지점 목록 로드
+    // ── localStorage 저장/복원 ──────────────────────────────
+    const STORAGE_KEY = "kenshington_form";
+    const FORM_FIELDS = ["checkin", "checkout", "adult_cnt", "child_cnt", "interval"];
+
+    function saveForm() {
+      const saved = { bran_cd: document.getElementById("bran_cd").value };
+      FORM_FIELDS.forEach((id) => { saved[id] = document.getElementById(id).value; });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    }
+
+    function loadForm(savedBranCd) {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      FORM_FIELDS.forEach((id) => {
+        if (saved[id] !== undefined) document.getElementById(id).value = saved[id];
+      });
+      if (savedBranCd && saved.bran_cd) {
+        document.getElementById("bran_cd").value = saved.bran_cd;
+      }
+    }
+
+    // 모든 폼 필드 변경 시 자동 저장
+    [...FORM_FIELDS, "bran_cd"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", saveForm);
+    });
+
+    // ── 지점 목록 로드 ──────────────────────────────────────
     fetch("/branches")
       .then((r) => r.json())
       .then((branches) => {
@@ -146,15 +184,19 @@
         };
         addGroup("켄싱턴 직영", branches.filter((b) => b.resortDiv === "0"));
         addGroup("연계 리조트", branches.filter((b) => b.resortDiv === "1"));
+        // 지점 옵션이 모두 추가된 후 복원
+        loadForm(true);
       });
 
-    // 기본 날짜: 오늘 / 내일
+    // ── 기본 날짜 설정 후 나머지 필드 복원 ─────────────────
     const fmt = (d) => d.toISOString().slice(0, 10);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
     document.getElementById("checkin").value = fmt(today);
     document.getElementById("checkout").value = fmt(tomorrow);
+    // bran_cd 제외한 나머지 필드 먼저 복원 (지점은 옵션 로드 후 복원)
+    loadForm(false);
 
     function startMonitor() {
       const params = new URLSearchParams({
@@ -194,34 +236,62 @@
 
     function appendLog(d) {
       const log = document.getElementById("log");
-      const line = document.createElement("div");
-      line.className = "log-line";
+
+      const statusKey = d.status === "session_expired" ? "expired" : (d.status ?? "error");
+      const entry = document.createElement("div");
+      entry.className = `log-entry ${statusKey}`;
+
+      // 메타 행: 시간 · 횟수 · 배지 · 부가 텍스트
+      const meta = document.createElement("div");
+      meta.className = "log-meta";
 
       const time = document.createElement("span");
       time.className = "log-time";
       time.textContent = d.time || now();
 
-      const msg = document.createElement("span");
-      msg.className = "log-msg";
+      const count = document.createElement("span");
+      count.className = "log-count";
+      count.textContent = `#${d.count ?? "?"}`;
 
+      const badge = document.createElement("span");
+      badge.className = `log-badge badge-${statusKey}`;
+
+      let detail = "";
       if (d.status === "available") {
-        msg.classList.add("available");
-        msg.textContent = `#${d.count} ✅ 객실 ${d.rooms.length}개 발견! → ${d.rooms.join(" / ")}`;
+        badge.textContent = `객실 ${d.rooms.length}개 발견`;
       } else if (d.status === "none") {
-        msg.textContent = `#${d.count} 빈 방 없음`;
+        badge.textContent = "빈 방 없음";
       } else if (d.status === "session_expired") {
-        msg.classList.add("expired");
-        msg.textContent = `#${d.count} ⚠ 세션 만료 — 아래 세션 설정에서 khrf 쿠키를 갱신하세요`;
-      } else if (d.status === "error") {
-        msg.classList.add("error");
-        msg.textContent = `#${d.count ?? "?"} 오류: ${d.message}`;
+        badge.textContent = "세션 만료";
+        detail = "khrf 쿠키를 갱신하고 저장하세요";
       } else {
-        msg.textContent = `#${d.count} ${d.hint ?? d.status}`;
+        badge.textContent = "오류";
+        detail = d.message ?? d.hint ?? d.status;
       }
 
-      line.appendChild(time);
-      line.appendChild(msg);
-      log.insertBefore(line, log.firstChild);
+      meta.append(time, count, badge);
+      if (detail) {
+        const txt = document.createElement("span");
+        txt.className = "log-detail";
+        txt.textContent = detail;
+        meta.appendChild(txt);
+      }
+      entry.appendChild(meta);
+
+      // 객실 목록
+      if (d.status === "available" && d.rooms?.length) {
+        const roomList = document.createElement("div");
+        roomList.className = "log-rooms";
+        d.rooms.forEach((r) => {
+          const item = document.createElement("div");
+          item.className = "log-room";
+          item.textContent = r;
+          roomList.appendChild(item);
+        });
+        entry.appendChild(roomList);
+      }
+
+      log.insertBefore(entry, log.firstChild);
     }
 
     async function saveSession() {
