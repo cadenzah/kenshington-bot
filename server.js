@@ -142,7 +142,12 @@ app.get("/api/monitor", async (req, res) => {
       send({ count, time: new Date().toTimeString().slice(0, 8), status: "error", message: e.message });
     }
 
-    const until = Date.now() + intervalMs;
+    // 설정 간격 ±20% 범위에서 초 단위로 무작위 대기
+    const intervalSec = Number(interval) * 60;
+    const minSec = Math.floor(intervalSec * 0.8);
+    const maxSec = Math.floor(intervalSec * 1.2);
+    const waitSec = Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
+    const until = Date.now() + waitSec * 1000;
     while (active && Date.now() < until) {
       await new Promise((r) => setTimeout(r, 500));
     }
