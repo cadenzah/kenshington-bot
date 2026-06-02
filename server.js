@@ -41,13 +41,26 @@ function makeClient() {
   });
 }
 
+function extractKhrf(response) {
+  const setCookie = response.headers["set-cookie"] ?? [];
+  for (const cookie of setCookie) {
+    const match = cookie.match(/^khrf=([^;]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt = 0 }) {
   const client = makeClient();
   const urlEncoded = { headers: { "Content-Type": "application/x-www-form-urlencoded" } };
   const form = (obj) => new URLSearchParams(obj).toString();
 
-  await client.post("/reservation/membno_select", form({ memb_no: session.memb_no }), urlEncoded);
-  await client.post("/reservation/branch_select", form({ bran_cd, memb_no: session.memb_no }), urlEncoded);
+  const r1 = await client.post("/reservation/membno_select", form({ memb_no: session.memb_no }), urlEncoded);
+  const r2 = await client.post("/reservation/branch_select", form({ bran_cd, memb_no: session.memb_no }), urlEncoded);
+
+  // 응답마다 서버가 갱신해주는 khrf를 반영해 세션을 자동 연장
+  const refreshed = extractKhrf(r2) ?? extractKhrf(r1);
+  if (refreshed) session.khrf = refreshed;
 
   const params = new URLSearchParams({
     search_bran_cd: bran_cd,
@@ -66,7 +79,10 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
     pay_type: "D",
   });
 
-  const { data: html } = await client.get(`/reservation/quick_roomdata_member/?${params}`);
+  const roomResp = await client.get(`/reservation/quick_roomdata_member/?${params}`);
+  const refined = extractKhrf(roomResp);
+  if (refined) session.khrf = refined;
+  const html = roomResp.data;
 
   if (html.slice(0, 1000).includes("로그인")) return { status: "session_expired" };
 
