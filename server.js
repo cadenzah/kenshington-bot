@@ -84,6 +84,9 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
   if (refined) session.khrf = refined;
   const html = roomResp.data;
 
+  const finalUrl = roomResp.request?.res?.responseUrl ?? "";
+  if (!finalUrl.includes("quick_roomdata_member")) return { status: "session_expired" };
+
   if (html.slice(0, 1000).includes("로그인")) return { status: "session_expired" };
 
   const $ = cheerio.load(html);
