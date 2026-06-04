@@ -3,6 +3,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { existsSync } from "fs";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
@@ -79,26 +80,63 @@ async function loginWithBrowser() {
 
   let browser;
   try {
-    browser = await puppeteer.launch({ headless: false });
+    // 시스템 Chrome 사용 시 reCAPTCHA 통과율이 높음
+    const chromePath = [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+    ].find(existsSync);
+
+    browser = await puppeteer.launch({
+      headless: false,
+      executablePath: chromePath,
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+      ],
+    });
     const page = await browser.newPage();
 
-    await page.goto(SSO_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.goto(SSO_URL, { waitUntil: "networkidle2", timeout: 20000 });
     await page.waitForSelector("#webId", { timeout: 15000 });
 
-    await page.type("#webId", session.memb_id);
-    await page.type("#webPwd", session.memb_pw);
+    // reCAPTCHA v3 토큰이 생성될 때까지 대기
+    await page.waitForFunction(
+      () => typeof window.grecaptcharesponse === "string" && window.grecaptcharesponse.length > 0,
+      { timeout: 15000, polling: 300 }
+    ).catch(() => console.log("reCAPTCHA 토큰 대기 타임아웃 — 그대로 진행"));
+
+    await page.type("#webId", session.memb_id, { delay: 60 });
+    await page.type("#webPwd", session.memb_pw, { delay: 60 });
+    await new Promise((r) => setTimeout(r, 500));
     await page.click(".login_btn");
 
-    // kensington.co.kr로 리다이렉트될 때까지 대기 (login_result 포함)
-    await page.waitForFunction(
-      () => window.location.hostname.includes("kensington.co.kr"),
-      { timeout: 30000, polling: 500 }
-    );
+    // 로그인 실패(에러 메시지) 또는 리다이렉트 중 먼저 발생하는 쪽 감지
+    const outcome = await Promise.race([
+      page.waitForFunction(
+        () => window.location.hostname.includes("kensington.co.kr"),
+        { timeout: 30000, polling: 500 }
+      ).then(() => "redirected"),
+      page.waitForFunction(
+        () => { const el = document.getElementById("errorMsg"); return el && el.style.display !== "none"; },
+        { timeout: 30000, polling: 500 }
+      ).then(() => "error"),
+    ]).catch(() => "timeout");
+
+    if (outcome !== "redirected") {
+      const msg = outcome === "error"
+        ? await page.$eval("#errorMsg", (el) => el.innerText).catch(() => "알 수 없는 에러")
+        : "타임아웃 — reCAPTCHA 차단 가능성 있음";
+      console.error("자동 로그인 실패:", msg);
+      await page.screenshot({ path: "/tmp/kenshington-login-fail.png" });
+      console.log("스크린샷 저장: /tmp/kenshington-login-fail.png");
+      return null;
+    }
+
     // login_result 처리 완료 대기
     await page.waitForFunction(
       () => !window.location.pathname.includes("login_result"),
       { timeout: 15000, polling: 500 }
-    );
+    ).catch(() => {});
 
     const cookies = await page.cookies();
     const khrf = cookies.find((c) => c.name === "khrf")?.value ?? null;
