@@ -12,14 +12,14 @@ app.use(express.json());
 // 세션 설정 — .env 파일에서 로드, index.html 세션 설정에서도 변경 가능
 // ============================================================
 const { MEMB_NO, KHRF, PORT = "3000" } = process.env;
-if (!MEMB_NO || !KHRF) {
-  console.error("오류: .env 파일에 MEMB_NO와 KHRF를 설정하세요 (.env.example 참고)");
+if (!MEMB_NO) {
+  console.error("오류: .env 파일에 MEMB_NO를 설정하세요 (.env.example 참고)");
   process.exit(1);
 }
 
 const session = {
   memb_no: MEMB_NO,
-  khrf: KHRF,
+  khrf: KHRF ?? "",
 };
 
 const BASE_URL = "https://www.kensington.co.kr";
@@ -36,9 +36,24 @@ function makeClient() {
       "Referer": `${BASE_URL}/reservation/quick_member`,
       "X-Requested-With": "XMLHttpRequest",
       "Accept-Language": "ko-KR,ko;q=0.9",
-      "Cookie": `khrf=${session.khrf}`,
+      ...(session.khrf && { "Cookie": `khrf=${session.khrf}` }),
     },
   });
+}
+
+// kensington /member/login 302 응답에서 새 khrf를 발급받는다
+async function fetchFreshKhrf() {
+  try {
+    const r = await axios.get(`${BASE_URL}/member/login`, {
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36" },
+      maxRedirects: 0,
+      validateStatus: () => true,
+    });
+    return extractKhrf(r);
+  } catch (e) {
+    if (e.response) return extractKhrf(e.response);
+    return null;
+  }
 }
 
 function extractKhrf(response) {
@@ -135,11 +150,27 @@ app.get("/api/monitor", async (req, res) => {
 
   const send = (data) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`); };
 
+  // khrf가 없으면 시작 전에 한 번 발급
+  if (!session.khrf) {
+    const fresh = await fetchFreshKhrf();
+    if (fresh) session.khrf = fresh;
+  }
+
   let count = 0;
   while (active) {
     count++;
     try {
-      const result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
+      let result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
+
+      // 세션 만료 시 khrf 자동 재발급 후 1회 재시도
+      if (result.status === "session_expired") {
+        const fresh = await fetchFreshKhrf();
+        if (fresh) {
+          session.khrf = fresh;
+          result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
+        }
+      }
+
       send({ count, time: new Date().toTimeString().slice(0, 8), ...result });
       if (result.status === "session_expired") break;
     } catch (e) {
