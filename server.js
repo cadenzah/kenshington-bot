@@ -113,6 +113,35 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
 app.get("/", (_, res) => res.sendFile(join(__dirname, "index.html")));
 app.get("/branches", (_, res) => res.sendFile(join(__dirname, "branch-code.json")));
 
+// SSO 로그인 콜백 — SSO가 returnUrl로 리다이렉트하면 여기서 khrf 캡처
+app.all("/login-callback", async (req, res) => {
+  const params = { ...req.query, ...req.body };
+  try {
+    const r = await axios.get(`${BASE_URL}/proc/login_result`, {
+      params,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+        "Referer": `${BASE_URL}/member/login`,
+      },
+      maxRedirects: 5,
+    });
+    const khrf = extractKhrf(r);
+    if (khrf) {
+      session.khrf = khrf;
+      const safe = JSON.stringify(khrf);
+      res.send(`<!doctype html><html><body><script>
+        if (window.opener) window.opener.postMessage({type:'khrf',khrf:${safe}},'*');
+        document.write('<p>로그인 완료! 이 창을 닫아주세요.</p>');
+        setTimeout(() => window.close(), 1000);
+      </script></body></html>`);
+    } else {
+      res.send("<!doctype html><html><body><p>로그인은 됐지만 khrf를 가져오지 못했습니다. 수동으로 복사해 주세요.</p></body></html>");
+    }
+  } catch (e) {
+    res.send(`<!doctype html><html><body><p>오류: ${e.message}</p></body></html>`);
+  }
+});
+
 app.post("/api/session", (req, res) => {
   const { khrf, memb_no } = req.body;
   if (khrf) session.khrf = khrf.trim();

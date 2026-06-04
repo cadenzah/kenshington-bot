@@ -130,7 +130,7 @@
           <label>khrf 쿠키 (2시간마다 갱신)</label>
           <div style="display:flex; gap:8px; align-items:center;">
             <input type="text" id="khrf" placeholder="DevTools > Application > Cookies에서 복사" style="flex:1;">
-            <a href="https://www.kensington.co.kr/member/login" target="_blank" rel="noopener" class="btn-login-link">로그인</a>
+            <button type="button" class="btn-login-link" onclick="openLoginPopup()">로그인</button>
           </div>
         </div>
       </div>
@@ -316,6 +316,24 @@
     }
 
     const now = () => new Date().toTimeString().slice(0, 8);
+
+    function openLoginPopup() {
+      const callbackUrl = window.location.origin + '/login-callback';
+      const ssoUrl = 'https://oneclick.elandretail.com/member/loginIntegrated?noHeader=Y&siteCode=80&returnUrl=' + encodeURIComponent(callbackUrl);
+      window.open(ssoUrl, 'kensington-login', 'width=520,height=680,left=200,top=100');
+    }
+
+    window.addEventListener('message', async (e) => {
+      if (e.data?.type !== 'khrf') return;
+      const khrf = e.data.khrf;
+      document.getElementById('khrf').value = khrf;
+      // 세션 details가 닫혀 있으면 열어서 피드백 표시
+      document.querySelector('details').open = true;
+      const msg = document.getElementById('sessionMsg');
+      msg.textContent = '로그인 완료 — khrf 자동 저장됨 ✓';
+      msg.style.display = '';
+      setTimeout(() => { msg.style.display = 'none'; msg.textContent = '저장됨 ✓'; }, 3000);
+    });
   </script>
 </body>
 </html>
