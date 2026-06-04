@@ -318,22 +318,24 @@
     const now = () => new Date().toTimeString().slice(0, 8);
 
     function openLoginPopup() {
-      const callbackUrl = window.location.origin + '/login-callback';
-      const ssoUrl = 'https://oneclick.elandretail.com/member/loginIntegrated?noHeader=Y&siteCode=80&returnUrl=' + encodeURIComponent(callbackUrl);
-      window.open(ssoUrl, 'kensington-login', 'width=520,height=680,left=200,top=100');
+      const popup = window.open('https://www.kensington.co.kr/member/login', 'kensington-login', 'width=520,height=680,left=200,top=100');
+      if (!popup) return;
+      const timer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(timer);
+          document.querySelector('details').open = true;
+          showLoginGuide();
+        }
+      }, 500);
     }
 
-    window.addEventListener('message', async (e) => {
-      if (e.data?.type !== 'khrf') return;
-      const khrf = e.data.khrf;
-      document.getElementById('khrf').value = khrf;
-      // 세션 details가 닫혀 있으면 열어서 피드백 표시
-      document.querySelector('details').open = true;
+    function showLoginGuide() {
       const msg = document.getElementById('sessionMsg');
-      msg.textContent = '로그인 완료 — khrf 자동 저장됨 ✓';
+      msg.textContent = '로그인 후 → F12 → Application → Cookies → khrf 복사 후 저장';
+      msg.style.color = 'var(--primary)';
       msg.style.display = '';
-      setTimeout(() => { msg.style.display = 'none'; msg.textContent = '저장됨 ✓'; }, 3000);
-    });
+      setTimeout(() => { msg.style.display = 'none'; msg.style.color = 'var(--success)'; msg.textContent = '저장됨 ✓'; }, 6000);
+    }
   </script>
 </body>
 </html>
