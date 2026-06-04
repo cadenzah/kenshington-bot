@@ -35,9 +35,6 @@
     .btn-stop { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
     .btn-stop:hover { background: #fce8e6; }
     .btn-sm { padding: 7px 14px; font-size: 13px; }
-    .btn-login-link { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--primary); text-decoration: none; white-space: nowrap; background: #fff; transition: background 0.15s; }
-    .btn-login-link:hover { background: #e8f0fe; border-color: var(--primary); }
-
     /* status bar */
     .status-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
@@ -127,11 +124,12 @@
           <input type="text" id="memb_no" placeholder="015-24980-05">
         </div>
         <div class="field">
-          <label>khrf 쿠키 (2시간마다 갱신)</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input type="text" id="khrf" placeholder="DevTools > Application > Cookies에서 복사" style="flex:1;">
-            <button type="button" class="btn-login-link" onclick="openLoginPopup()">로그인</button>
-          </div>
+          <label>아이디</label>
+          <input type="text" id="memb_id" placeholder="켄싱턴 로그인 아이디" autocomplete="username">
+        </div>
+        <div class="field span2">
+          <label>비밀번호 — 세션 만료 시 자동 재로그인에 사용</label>
+          <input type="password" id="memb_pw" placeholder="켄싱턴 로그인 비밀번호" autocomplete="current-password">
         </div>
       </div>
       <div class="actions" style="margin-top: 12px;">
@@ -301,10 +299,12 @@
 
     async function saveSession() {
       const body = {};
-      const khrf = document.getElementById("khrf").value.trim();
       const memb_no = document.getElementById("memb_no").value.trim();
-      if (khrf) body.khrf = khrf;
+      const memb_id = document.getElementById("memb_id").value.trim();
+      const memb_pw = document.getElementById("memb_pw").value.trim();
       if (memb_no) body.memb_no = memb_no;
+      if (memb_id) body.memb_id = memb_id;
+      if (memb_pw) body.memb_pw = memb_pw;
       await fetch("/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -316,26 +316,6 @@
     }
 
     const now = () => new Date().toTimeString().slice(0, 8);
-
-    function openLoginPopup() {
-      const popup = window.open('https://www.kensington.co.kr/member/login', 'kensington-login', 'width=520,height=680,left=200,top=100');
-      if (!popup) return;
-      const timer = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(timer);
-          document.querySelector('details').open = true;
-          showLoginGuide();
-        }
-      }, 500);
-    }
-
-    function showLoginGuide() {
-      const msg = document.getElementById('sessionMsg');
-      msg.textContent = '로그인 후 → F12 → Application → Cookies → khrf 복사 후 저장';
-      msg.style.color = 'var(--primary)';
-      msg.style.display = '';
-      setTimeout(() => { msg.style.display = 'none'; msg.style.color = 'var(--success)'; msg.textContent = '저장됨 ✓'; }, 6000);
-    }
   </script>
 </body>
 </html>

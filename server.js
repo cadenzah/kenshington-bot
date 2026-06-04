@@ -3,6 +3,10 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+
+puppeteer.use(StealthPlugin());
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -11,7 +15,7 @@ app.use(express.json());
 // ============================================================
 // 세션 설정 — .env 파일에서 로드, index.html 세션 설정에서도 변경 가능
 // ============================================================
-const { MEMB_NO, KHRF, PORT = "3000" } = process.env;
+const { MEMB_NO, KHRF, MEMB_ID, MEMB_PW, PORT = "3000" } = process.env;
 if (!MEMB_NO) {
   console.error("오류: .env 파일에 MEMB_NO를 설정하세요 (.env.example 참고)");
   process.exit(1);
@@ -20,9 +24,12 @@ if (!MEMB_NO) {
 const session = {
   memb_no: MEMB_NO,
   khrf: KHRF ?? "",
+  memb_id: MEMB_ID ?? "",
+  memb_pw: MEMB_PW ?? "",
 };
 
 const BASE_URL = "https://www.kensington.co.kr";
+const SSO_URL = "https://oneclick.elandretail.com/member/loginIntegrated?noHeader=Y&siteCode=80&returnUrl=https%3A%2F%2Fwww.kensington.co.kr%2Fproc%2Flogin_result";
 const NO_ROOM = ["객실이 없습니다", "조회된 객실이 없", "예약 가능한 객실이 없"];
 
 // ============================================================
@@ -41,7 +48,16 @@ function makeClient() {
   });
 }
 
-// kensington /member/login 302 응답에서 새 khrf를 발급받는다
+function extractKhrf(response) {
+  const setCookie = response.headers["set-cookie"] ?? [];
+  for (const cookie of setCookie) {
+    const match = cookie.match(/^khrf=([^;]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// /member/login 302 응답에서 게스트 khrf 발급
 async function fetchFreshKhrf() {
   try {
     const r = await axios.get(`${BASE_URL}/member/login`, {
@@ -56,13 +72,56 @@ async function fetchFreshKhrf() {
   }
 }
 
-function extractKhrf(response) {
-  const setCookie = response.headers["set-cookie"] ?? [];
-  for (const cookie of setCookie) {
-    const match = cookie.match(/^khrf=([^;]+)/);
-    if (match) return match[1];
+// Puppeteer로 실제 로그인해서 인증된 khrf 획득
+async function loginWithBrowser() {
+  if (!session.memb_id || !session.memb_pw) return null;
+  console.log("브라우저 자동 로그인 시도 중...");
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({ headless: false });
+    const page = await browser.newPage();
+
+    await page.goto(SSO_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForSelector("#webId", { timeout: 15000 });
+
+    await page.type("#webId", session.memb_id);
+    await page.type("#webPwd", session.memb_pw);
+    await page.click(".login_btn");
+
+    // kensington.co.kr로 리다이렉트될 때까지 대기 (login_result 포함)
+    await page.waitForFunction(
+      () => window.location.hostname.includes("kensington.co.kr"),
+      { timeout: 30000, polling: 500 }
+    );
+    // login_result 처리 완료 대기
+    await page.waitForFunction(
+      () => !window.location.pathname.includes("login_result"),
+      { timeout: 15000, polling: 500 }
+    );
+
+    const cookies = await page.cookies();
+    const khrf = cookies.find((c) => c.name === "khrf")?.value ?? null;
+    if (khrf) console.log("자동 로그인 성공");
+    else console.log("자동 로그인 완료, 쿠키 없음");
+    return khrf;
+  } catch (e) {
+    console.error("브라우저 로그인 실패:", e.message);
+    return null;
+  } finally {
+    if (browser) await browser.close();
   }
-  return null;
+}
+
+// 세션 복구: 브라우저 로그인 → 게스트 khrf 순으로 시도
+async function recoverSession() {
+  if (session.memb_id && session.memb_pw) {
+    const khrf = await loginWithBrowser();
+    if (khrf) { session.khrf = khrf; return true; }
+  }
+  const fresh = await fetchFreshKhrf();
+  if (fresh) { session.khrf = fresh; return true; }
+  return false;
 }
 
 async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt = 0 }) {
@@ -73,7 +132,6 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
   const r1 = await client.post("/reservation/membno_select", form({ memb_no: session.memb_no }), urlEncoded);
   const r2 = await client.post("/reservation/branch_select", form({ bran_cd, memb_no: session.memb_no }), urlEncoded);
 
-  // 응답마다 서버가 갱신해주는 khrf를 반영해 세션을 자동 연장
   const refreshed = extractKhrf(r2) ?? extractKhrf(r1);
   if (refreshed) session.khrf = refreshed;
 
@@ -128,11 +186,12 @@ async function checkRooms({ bran_cd, checkin, checkout, adult_cnt = 2, child_cnt
 app.get("/", (_, res) => res.sendFile(join(__dirname, "index.html")));
 app.get("/branches", (_, res) => res.sendFile(join(__dirname, "branch-code.json")));
 
-
 app.post("/api/session", (req, res) => {
-  const { khrf, memb_no } = req.body;
-  if (khrf) session.khrf = khrf.trim();
+  const { khrf, memb_no, memb_id, memb_pw } = req.body;
+  if (khrf)    session.khrf    = khrf.trim();
   if (memb_no) session.memb_no = memb_no.trim();
+  if (memb_id) session.memb_id = memb_id.trim();
+  if (memb_pw) session.memb_pw = memb_pw.trim();
   res.json({ ok: true });
 });
 
@@ -143,18 +202,14 @@ app.get("/api/monitor", async (req, res) => {
   res.flushHeaders();
 
   const { bran_cd, checkin, checkout, adult_cnt = 2, child_cnt = 0, interval = 5 } = req.query;
-  const intervalMs = Number(interval) * 60 * 1000;
 
   let active = true;
   req.on("close", () => { active = false; });
 
   const send = (data) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`); };
 
-  // khrf가 없으면 시작 전에 한 번 발급
-  if (!session.khrf) {
-    const fresh = await fetchFreshKhrf();
-    if (fresh) session.khrf = fresh;
-  }
+  // khrf 없으면 시작 전 복구 시도
+  if (!session.khrf) await recoverSession();
 
   let count = 0;
   while (active) {
@@ -162,13 +217,10 @@ app.get("/api/monitor", async (req, res) => {
     try {
       let result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
 
-      // 세션 만료 시 khrf 자동 재발급 후 1회 재시도
+      // 세션 만료 시 자동 복구 후 1회 재시도
       if (result.status === "session_expired") {
-        const fresh = await fetchFreshKhrf();
-        if (fresh) {
-          session.khrf = fresh;
-          result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
-        }
+        const recovered = await recoverSession();
+        if (recovered) result = await checkRooms({ bran_cd, checkin, checkout, adult_cnt, child_cnt });
       }
 
       send({ count, time: new Date().toTimeString().slice(0, 8), ...result });
